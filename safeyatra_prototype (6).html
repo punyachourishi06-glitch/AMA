@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SafeYatra — Command Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<style>
+  :root{
+    --bg:#0E1315; --panel:#161D20; --panel-2:#1D262A; --border:#2A353A;
+    --text:#E7ECEE; --muted:#8B9BA1; --dim:#5C6D73;
+    --green:#4FBE7A; --yellow:#E3B341; --amber:#F0883E; --red:#E5484D;
+    --green-bg:#132A1E; --yellow-bg:#2B240F; --amber-bg:#2E1D0F; --red-bg:#301416;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh; padding:28px;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .topbar{
+    display:flex; justify-content:space-between; align-items:flex-end;
+    margin-bottom:22px; flex-wrap:wrap; gap:14px;
+  }
+  .brand{display:flex; align-items:baseline; gap:12px;}
+  .brand h1{font-size:20px; font-weight:600; letter-spacing:0.2px;}
+  .brand .corridor{color:var(--muted); font-size:13px;}
+  .mode-toggle{display:flex; gap:2px; background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:2px;}
+  .mode-toggle button{
+    background:none; border:none; color:var(--dim); font-family:inherit; font-size:12px;
+    padding:7px 14px; border-radius:4px; cursor:pointer;
+  }
+  .mode-toggle button.active{background:var(--panel-2); color:var(--text);}
+
+  .controls{display:flex; align-items:center; gap:14px; margin-bottom:22px; flex-wrap:wrap;}
+  #playBtn{
+    background:var(--red); color:#fff; border:none; font-family:inherit; font-weight:500;
+    font-size:13px; padding:10px 20px; border-radius:6px; cursor:pointer;
+  }
+  #playBtn:disabled{background:var(--panel-2); color:var(--dim); cursor:default;}
+  .timeline-label{font-size:13px; color:var(--muted);}
+  .clock{font-size:13px; color:var(--text);}
+  .fetch-status{font-size:11px; color:var(--dim);}
+
+  #authorityView, #pilgrimView{display:none;}
+  #authorityView.active, #pilgrimView.active{display:block;}
+
+  .metrics{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;}
+  .metric{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:14px 16px;}
+  .metric .label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+  .metric .value{font-size:22px; font-weight:600;}
+
+  .grid{display:grid; grid-template-columns:1.6fr 1fr; gap:16px;}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px;}
+  .panel h2{font-size:13px; color:var(--muted); font-weight:500; margin-bottom:12px; text-transform:none;}
+
+  .segment{
+    display:grid; grid-template-columns:1.5fr 0.8fr 0.8fr 1fr; gap:10px; align-items:center;
+    padding:12px; border-radius:6px; margin-bottom:8px; border:1px solid transparent;
+  }
+  .segment .name{font-size:13px; font-weight:500;}
+  .segment .sub{font-size:11px; color:var(--dim); margin-top:2px;}
+  .segment .stat{font-size:13px;}
+  .seg-green{background:var(--green-bg); border-color:#1E3B29;}
+  .seg-yellow{background:var(--yellow-bg); border-color:#463A16;}
+  .seg-amber{background:var(--amber-bg); border-color:#4A2D14;}
+  .seg-red{background:var(--red-bg); border-color:#4A1B1E;}
+  .seg-green .stat.risk{color:var(--green);}
+  .seg-yellow .stat.risk{color:var(--yellow);}
+  .seg-amber .stat.risk{color:var(--amber);}
+  .seg-red .stat.risk{color:var(--red);}
+
+  .log{display:flex; flex-direction:column; gap:8px; max-height:340px; overflow-y:auto;}
+  .log-entry{font-size:12px; padding:9px 10px; border-radius:6px; background:var(--panel-2); border-left:2px solid var(--dim);}
+  .log-entry.alert{border-left-color:var(--red); background:var(--red-bg); color:var(--red);}
+  .log-entry .t{color:var(--dim); margin-right:8px;}
+  .log-entry.alert .t{color:var(--red); opacity:0.7;}
+
+  /* Pilgrim view */
+  .phone{width:300px; margin:20px auto; background:var(--panel); border:1px solid var(--border); border-radius:20px; overflow:hidden;}
+  .phone-bar{display:flex; justify-content:space-between; padding:10px 16px; font-size:11px; color:var(--dim);}
+  .phone-status{padding:18px; text-align:center; transition:background 0.4s;}
+  .phone-status .icon{font-size:24px;}
+  .phone-status .headline{font-size:15px; font-weight:600; margin:8px 0 2px;}
+  .phone-status .sub{font-size:12px;}
+  .phone-body{padding:14px 16px;}
+  .shelter-box{background:var(--panel-2); border-radius:6px; padding:12px; margin-bottom:12px;}
+  .shelter-box .label{font-size:11px; color:var(--muted); margin-bottom:3px;}
+  .shelter-box .name{font-size:13px; font-weight:500;}
+  .phone-btn{width:100%; height:38px; border-radius:6px; border:1px solid var(--border); background:var(--panel-2); color:var(--text); font-family:inherit; font-size:13px; margin-bottom:8px; cursor:default;}
+  .phone-btn.primary{background:var(--red); color:#fff; border:none;}
+  .sms-note{font-size:11px; color:var(--dim); text-align:center; margin-top:6px;}
+
+  .note{font-size:12px; color:var(--dim); margin-top:18px; border-top:1px solid var(--border); padding-top:14px; max-width:70ch;}
+  .note.correction{color:var(--amber); border-top-color:#4A2D14;}
+
+  #mapPanel{margin-bottom:16px;}
+  #heatMap{height:340px; border-radius:6px; background:#0A0D0E;}
+  .leaflet-tile-pane{filter:brightness(0.6) invert(1) contrast(0.9) hue-rotate(180deg);}
+  .map-legend{display:flex; align-items:center; gap:16px; margin-top:10px; flex-wrap:wrap;}
+  .map-legend .item{display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted);}
+  .map-legend .swatch{width:10px; height:10px; border-radius:50%;}
+  .map-caveat{font-size:10.5px; color:var(--dim); margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <h1>SafeYatra</h1>
+    <span class="corridor mono">Sonprayag → Munkatiya → Gaurikund → Bhimbali → Linchauli → Kedarnath</span>
+  </div>
+  <div class="mode-toggle">
+    <button id="btnAuthority" class="active">Authority Mode</button>
+    <button id="btnPilgrim">Pilgrim Mode</button>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="playBtn" onclick="playDemo()">▶ Replay 19 May 2026 event</button>
+  <span class="timeline-label mono">Step <span id="stepNum">0</span> / <span id="stepTotal">5</span></span>
+  <span class="clock mono" id="clockLabel">—</span>
+  <span class="fetch-status mono" id="fetchStatus">Loading real rainfall record…</span>
+</div>
+
+<div id="authorityView" class="active">
+  <div class="metrics">
+    <div class="metric"><div class="label">Rainfall, Munkatiya <span style="color:var(--dim)">(historical, live-fetched)</span></div><div class="value mono" id="mRain">— mm</div></div>
+    <div class="metric"><div class="label">Pilgrims on corridor <span style="color:var(--dim)">(estimated)</span></div><div class="value mono" id="mOcc">0</div></div>
+    <div class="metric"><div class="label">Highest exposure segment</div><div class="value" id="mSeg">—</div></div>
+  </div>
+  <div class="metrics" style="grid-template-columns:1fr;">
+    <div class="metric" style="border-color:#2E5D3E;">
+      <div class="label" style="display:flex; align-items:center; gap:6px;">
+        <span style="width:6px; height:6px; border-radius:50%; background:var(--green); display:inline-block;"></span>
+        LIVE — current rainfall near Munkatiya right now
+      </div>
+      <div class="value mono" id="mLiveRain">Fetching…</div>
+    </div>
+  </div>
+  <div class="panel" id="mapPanel">
+    <h2>Aggregate crowd density &amp; hazard map</h2>
+    <div id="heatMap"></div>
+    <div class="map-legend">
+      <div class="item"><span class="swatch" style="background:var(--green);"></span>Low risk</div>
+      <div class="item"><span class="swatch" style="background:var(--yellow);"></span>Moderate</div>
+      <div class="item"><span class="swatch" style="background:var(--amber);"></span>High</div>
+      <div class="item"><span class="swatch" style="background:var(--red);"></span>Severe</div>
+      <div class="item">· Glow intensity = aggregate pilgrim density, interpolated along the trail between checkpoints (not individual tracking)</div>
+    </div>
+    <p class="map-caveat">Munkatiya's position is interpolated along the Sonprayag–Gaurikund road at ~1.5 km before Gaurikund (its reported distance in news coverage) — no surveyed GPS pin was available. Bhimbali and Linchauli positions are interpolated from published trek-distance markers (~7 km and ~9.5 km from Gaurikund), not GPS-surveyed. Sonprayag, Gaurikund, and Kedarnath coordinates are from public geographic records. Occupancy figures are estimated, not from real checkpoint-scan data. Production version replaces all of this with GSI-surveyed segment boundaries and real Char Dham checkpoint GPS + scan data end-to-end.</p>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h2>Route segments</h2>
+      <div id="segmentList"></div>
+    </div>
+    <div class="panel">
+      <h2>Live event log</h2>
+      <div class="log" id="eventLog"></div>
+    </div>
+  </div>
+  <p class="note">This replays the real landslide that struck Munkatiya on the Sonprayag–Gaurikund road at approximately 21:16 IST on 19 May 2026, blocking a ~900 m stretch and triggering an SDRF/NDRF evacuation of 10,450+ pilgrims over 19–20 May with zero fatalities. Rainfall values above are fetched live from Open-Meteo's historical weather archive (ERA5 reanalysis) for Munkatiya's coordinates on that date — not hand-entered. Occupancy and risk-transition timing are an estimated reconstruction built around the confirmed event timeline, not a real per-checkpoint feed.</p>
+  <p class="note correction">Correction from an earlier version of this prototype: a checkpoint called "Silai Band" was used previously but does not correspond to any real, verifiable location — it has been removed and replaced with Linchauli, a real trek waypoint. Munkatiya was also previously placed past Gaurikund on the foot trek; verified news coverage places it on the motorable road between Sonprayag and Gaurikund, and this version corrects that.</p>
+</div>
+
+<div id="pilgrimView">
+  <div class="phone">
+    <div class="phone-bar"><span>SafeYatra</span><span>हिंदी</span></div>
+    <div class="phone-status" id="phoneStatus" style="background:#132A1E;">
+      <div class="icon" id="phoneIcon">✓</div>
+      <div class="headline" id="phoneHeadline" style="color:var(--green);">All clear</div>
+      <div class="sub" id="phoneSub" style="color:var(--green);">Your segment: Sonprayag</div>
+    </div>
+    <div class="phone-body">
+      <div class="shelter-box">
+        <div class="label">Nearest safe shelter</div>
+        <div class="name">Gaurikund base camp</div>
+      </div>
+      <a class="phone-btn primary" style="display:block; text-align:center; line-height:38px; text-decoration:none; box-sizing:border-box;" href="https://www.google.com/maps/dir/?api=1&destination=30.6330,79.0170" target="_blank" rel="noopener">Show directions to shelter</a>
+      <a class="phone-btn" style="display:block; text-align:center; line-height:38px; text-decoration:none; box-sizing:border-box;" href="tel:+917479086809">Call emergency helpline</a>
+      <div class="sms-note mono" id="smsNote">No alerts sent</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Corrected geography (see on-screen correction note) ---
+// Sonprayag & Gaurikund: public geographic records (Wikipedia).
+// Munkatiya: interpolated on the Sonprayag-Gaurikund road, ~1.5km before Gaurikund
+//   (per verified May 2026 news coverage of the real event) — not GPS-surveyed.
+// Bhimbali / Linchauli: interpolated along the Gaurikund-Kedarnath trek at their
+//   published distance markers (~7km / ~9.5km from Gaurikund) — not GPS-surveyed.
+// Kedarnath: public geographic records, matches the live-weather fetch below.
+const segments = [
+  {name:"Munkatiya", sub:"Landslide-prone road cut, Sonprayag–Gaurikund (real 19 May 2026 event site)", lat:30.6329, lng:79.0000},
+  {name:"Gaurikund base", sub:"Trek start / evacuee marshalling point", lat:30.6330, lng:79.0170},
+  {name:"Bhimbali", sub:"Trek waypoint, ~7 km from Gaurikund", lat:30.6774, lng:79.0388},
+  {name:"Linchauli", sub:"Trek waypoint, ~9.5 km from Gaurikund, medical camp", lat:30.6934, lng:79.0466},
+];
+
+// Scripted reconstruction of the real 19 May 2026 Munkatiya landslide.
+// Confirmed facts (verified via multiple news reports): landslide ~21:16 IST,
+// blocked a ~900m stretch of the Sonprayag-Gaurikund road, three landslide points
+// hit that stretch, 10,450+ pilgrims evacuated safely over 19-20 May, zero deaths,
+// SDRF/NDRF deployed from Sonprayag. Rainfall (rain field) is a fallback default —
+// it gets overwritten with real fetched historical values once the archive API
+// call below resolves. Occupancy (occBySeg) is an ESTIMATED reconstruction of
+// hourly headcount per segment, not a real per-checkpoint feed — the 10,450 figure
+// is a real two-day cumulative rescue total, not the same thing as an instantaneous
+// segment headcount, and the two are kept clearly separate on screen.
+const timeline = [
+  {t:"19:00", hourKey:"2026-05-19T19:00", rain:8, occ:3750,
+   occBySeg:{Munkatiya:900, "Gaurikund base":1400, Bhimbali:850, Linchauli:600},
+   risk:{Munkatiya:"green", "Gaurikund base":"green", Bhimbali:"green", Linchauli:"green"},
+   log:"Evening yatra traffic normal. Light rain building over upper Rudraprayag district."},
+  {t:"20:00", hourKey:"2026-05-19T20:00", rain:19, occ:4930,
+   occBySeg:{Munkatiya:1500, "Gaurikund base":2000, Bhimbali:820, Linchauli:610},
+   risk:{Munkatiya:"yellow", "Gaurikund base":"green", Bhimbali:"green", Linchauli:"green"},
+   log:"Rainfall intensifying on the Sonprayag–Gaurikund stretch near Munkatiya."},
+  {t:"20:45", hourKey:"2026-05-19T20:00", rain:19, occ:6070,
+   occBySeg:{Munkatiya:2100, "Gaurikund base":2600, Bhimbali:780, Linchauli:590},
+   risk:{Munkatiya:"amber", "Gaurikund base":"yellow", Bhimbali:"green", Linchauli:"green"},
+   log:"Threshold approaching at Munkatiya. Jeep entry from Sonprayag throttled."},
+  {t:"21:16", hourKey:"2026-05-19T21:00", rain:31, occ:6930,
+   occBySeg:{Munkatiya:2300, "Gaurikund base":3100, Bhimbali:760, Linchauli:570},
+   risk:{Munkatiya:"red", "Gaurikund base":"amber", Bhimbali:"green", Linchauli:"green"},
+   log:"⚠ Landslide strikes Munkatiya — ~900m of the Sonprayag–Gaurikund road buried. District Control Room, Rudraprayag alerts SDRF.", alert:true},
+  {t:"21:20", hourKey:"2026-05-19T21:00", rain:31, occ:6930,
+   occBySeg:{Munkatiya:2300, "Gaurikund base":3100, Bhimbali:760, Linchauli:570},
+   risk:{Munkatiya:"red", "Gaurikund base":"amber", Bhimbali:"green", Linchauli:"green"},
+   log:"SDRF/NDRF teams deployed from Sonprayag. SMS alert dispatched to registered pilgrims on the affected stretch.", alert:true, triggerSMS:true},
+  {t:"20 May, morning", hourKey:"2026-05-20T06:00", rain:4, occ:2620,
+   occBySeg:{Munkatiya:300, "Gaurikund base":900, Bhimbali:800, Linchauli:620},
+   risk:{Munkatiya:"amber", "Gaurikund base":"green", Bhimbali:"green", Linchauli:"green"},
+   log:"Evacuation concludes: 10,450+ pilgrims safely evacuated over 19–20 May, zero fatalities. Munkatiya road remains closed pending debris clearance.", alert:true},
+];
+
+let step = 0;
+
+// --- Real SMS trigger (via local server, see server.js) ---
+// Run `node server.js` on your laptop before opening this file — leave that terminal window open during the demo.
+const TWILIO_FUNCTION_URL = "http://localhost:3000/send-alert";
+const ALERT_RECIPIENT = "9993286348"; // 10-digit Indian number, no +91 prefix — this is what Fast2SMS expects
+
+function sendRealSMS(){
+  fetch(TWILIO_FUNCTION_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({to: ALERT_RECIPIENT})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if(data.success){
+      console.log('Real SMS sent, sid:', data.sid);
+    } else {
+      console.warn('SMS send failed:', data.error);
+    }
+  })
+  .catch(err => console.warn('Could not reach local SMS server (is `node server.js` running? check URL / CORS):', err));
+}
+
+// --- Aggregate map setup ---
+const riskColors = {green:"#4FBE7A", yellow:"#E3B341", amber:"#F0883E", red:"#E5484D"};
+const map = L.map('heatMap', {zoomControl:true, attributionControl:false}).setView([30.684, 79.013], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:16}).addTo(map);
+
+const segMarkers = {};
+segments.forEach(s=>{
+  const marker = L.circleMarker([s.lat, s.lng], {
+    radius:9, color:'#fff', weight:1.5, fillColor:'#4FBE7A', fillOpacity:0.9
+  }).addTo(map).bindTooltip(s.name, {permanent:false});
+  segMarkers[s.name] = marker;
+});
+
+// Trailhead / temple — context anchors only, not hazard checkpoints, so styled
+// distinctly (muted, smaller) from the 4 risk-colored segment markers above.
+[{lat:30.6325, lng:78.9600, label:"Sonprayag (trailhead)"},
+ {lat:30.7346, lng:79.0669, label:"Kedarnath (temple)"}].forEach(a=>{
+  L.circleMarker([a.lat, a.lng], {
+    radius:5, color:'#5C6D73', weight:1.5, fillColor:'#161D20', fillOpacity:0.9
+  }).addTo(map).bindTooltip(a.label, {permanent:false});
+});
+
+// --- Full-trail anchors (trailhead → 4 segments → temple) ---
+const trailAnchors = [
+  {key:"sonprayag", lat:30.6325, lng:78.9600},
+  {key:"Munkatiya", lat:30.6329, lng:79.0000},
+  {key:"Gaurikund base", lat:30.6330, lng:79.0170},
+  {key:"Bhimbali", lat:30.6774, lng:79.0388},
+  {key:"Linchauli", lat:30.6934, lng:79.0466},
+  {key:"kedarnath", lat:30.7346, lng:79.0669},
+];
+// Sonprayag/Kedarnath aren't checkpoint segments with their own scan data — we don't
+// have real counts for them, so we derive a placeholder as a fraction of the nearest
+// checkpoint's count (people queuing to start / people who've already arrived).
+const ANCHOR_OCC_FACTOR = {sonprayag:0.35, kedarnath:0.25};
+
+function resolveTrailOcc(e){
+  const o = Object.assign({}, e.occBySeg);
+  o.sonprayag = Math.round(ANCHOR_OCC_FACTOR.sonprayag * o["Munkatiya"]);
+  o.kedarnath = Math.round(ANCHOR_OCC_FACTOR.kedarnath * o["Linchauli"]);
+  return o;
+}
+
+function lerp(a, b, t){ return a + (b - a) * t; }
+
+const PER_LEG = 9;
+const trailPoints = [];
+for(let i=0;i<trailAnchors.length-1;i++){
+  const A = trailAnchors[i], B = trailAnchors[i+1];
+  const dx = B.lng - A.lng, dy = B.lat - A.lat;
+  const len = Math.sqrt(dx*dx + dy*dy) || 1;
+  const perpX = -dy/len, perpY = dx/len;
+  for(let j=0;j<PER_LEG;j++){
+    const t = j/(PER_LEG-1);
+    const jitterSeed = Math.sin(i*97.13 + j*13.37);
+    const jitterMag = 0.0016 * jitterSeed;
+    trailPoints.push({
+      lat: lerp(A.lat, B.lat, t) + perpX*jitterMag,
+      lng: lerp(A.lng, B.lng, t) + perpY*jitterMag,
+      aKey: A.key, bKey: B.key, t
+    });
+  }
+}
+
+let heatLayer = L.heatLayer([], {radius:26, blur:22, maxZoom:16, minOpacity:0.25,
+  gradient:{0.2:'#1D262A', 0.4:'#4FBE7A', 0.65:'#E3B341', 0.85:'#F0883E', 1:'#E5484D'}
+}).addTo(map);
+
+function renderMap(risk, occBySeg, e){
+  segments.forEach(s=>{
+    segMarkers[s.name].setStyle({fillColor: riskColors[risk[s.name]]});
+  });
+  const occ = resolveTrailOcc(e);
+  const maxOcc = Math.max(...Object.values(occ));
+  const points = trailPoints.map(p => {
+    const w = lerp(occ[p.aKey], occ[p.bKey], p.t);
+    return [p.lat, p.lng, Math.max(0.12, w / maxOcc)];
+  });
+  heatLayer.setLatLngs(points);
+}
+
+function renderSegments(risk, occBySeg){
+  const list = document.getElementById('segmentList');
+  list.innerHTML = '';
+  segments.forEach(s=>{
+    const level = risk[s.name];
+    const div = document.createElement('div');
+    div.className = 'segment seg-' + level;
+    const riskLabel = {green:"Low", yellow:"Moderate", amber:"High", red:"Severe"}[level];
+    div.innerHTML = `
+      <div><div class="name">${s.name}</div><div class="sub">${s.sub}</div></div>
+      <div class="stat risk">${riskLabel}</div>
+      <div class="stat mono">${occBySeg[s.name]} ppl</div>
+      <div class="stat">${level==='red' ? 'Halt entry' : level==='amber' ? 'Monitor' : 'Normal flow'}</div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function renderLog(upTo){
+  const log = document.getElementById('eventLog');
+  log.innerHTML = '';
+  for(let i=0;i<=upTo;i++){
+    const e = timeline[i];
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (e.alert ? ' alert' : '');
+    div.innerHTML = `<span class="t mono">${e.t}</span>${e.log}`;
+    log.prepend(div);
+  }
+}
+
+function updatePhone(state){
+  const el = document.getElementById('phoneStatus');
+  const icon = document.getElementById('phoneIcon');
+  const head = document.getElementById('phoneHeadline');
+  const sub = document.getElementById('phoneSub');
+  const sms = document.getElementById('smsNote');
+  const configs = {
+    green:{bg:"#132A1E", color:"var(--green)", icon:"✓", head:"All clear", sub:"Your segment: Sonprayag"},
+    yellow:{bg:"#2B240F", color:"var(--yellow)", icon:"!", head:"Elevated risk nearby", sub:"Monitoring conditions near Munkatiya"},
+    amber:{bg:"#2E1D0F", color:"var(--amber)", icon:"!", head:"Prepare to move", sub:"Rising risk at your segment"},
+    red:{bg:"#301416", color:"var(--red)", icon:"⚠", head:"Move to shelter now", sub:"Landslide near Munkatiya, your segment"},
+  };
+  const c = configs[state];
+  el.style.background = c.bg;
+  icon.style.color = c.color; icon.textContent = c.icon;
+  head.style.color = c.color; head.textContent = c.head;
+  sub.style.color = c.color; sub.textContent = c.sub;
+  sms.textContent = state==='red' ? 'Alert sent via SMS, just now' : 'No alerts sent';
+}
+
+function renderStep(i){
+  const e = timeline[i];
+  document.getElementById('mRain').textContent = e.rain + ' mm';
+  document.getElementById('mOcc').textContent = e.occ.toLocaleString();
+  document.getElementById('mSeg').textContent = 'Munkatiya';
+  document.getElementById('clockLabel').textContent = e.t;
+  document.getElementById('stepNum').textContent = i+1;
+  renderSegments(e.risk, e.occBySeg);
+  renderMap(e.risk, e.occBySeg, e);
+  renderLog(i);
+  updatePhone(e.risk['Munkatiya']);
+  if(e.triggerSMS){
+    sendRealSMS();
+  }
+}
+
+document.getElementById('stepTotal').textContent = timeline.length;
+renderStep(0);
+document.getElementById('eventLog').innerHTML = '';
+setTimeout(() => map.invalidateSize(), 200);
+
+// Genuinely live data — real CURRENT weather for Munkatiya, fetched at page load.
+fetch('https://api.open-meteo.com/v1/forecast?latitude=30.6329&longitude=79.0000&current=precipitation,rain&timezone=Asia%2FKolkata')
+  .then(r => r.json())
+  .then(data => {
+    const rain = data.current?.rain ?? data.current?.precipitation ?? 0;
+    const time = data.current?.time?.split('T')[1] ?? '';
+    document.getElementById('mLiveRain').textContent = rain + ' mm  ·  as of ' + time + ' IST';
+  })
+  .catch(() => {
+    document.getElementById('mLiveRain').textContent = 'Live fetch unavailable offline — falls back to cached reading in production';
+  });
+
+// Genuinely REAL HISTORICAL data — fetches actual hourly precipitation from
+// Open-Meteo's ERA5 reanalysis archive for Munkatiya's coordinates covering
+// 19-20 May 2026, then patches the timeline's rain values with what really
+// happened instead of hand-typed numbers. If this fails (offline / no network),
+// the hand-typed fallback values above stay in place and the status line says so.
+fetch('https://archive-api.open-meteo.com/v1/archive?latitude=30.6329&longitude=79.0000&start_date=2026-05-19&end_date=2026-05-20&hourly=precipitation,rain&timezone=Asia%2FKolkata')
+  .then(r => r.json())
+  .then(data => {
+    const times = data.hourly?.time || [];
+    const precip = data.hourly?.precipitation || data.hourly?.rain || [];
+    const lookup = {};
+    times.forEach((t,i)=>{ lookup[t] = precip[i]; });
+    let matched = 0;
+    timeline.forEach(e=>{
+      if(lookup[e.hourKey] !== undefined){ e.rain = lookup[e.hourKey]; matched++; }
+    });
+    document.getElementById('fetchStatus').textContent = matched > 0
+      ? `Rainfall: ${matched}/${timeline.length} steps loaded from Open-Meteo ERA5 archive (real)`
+      : 'Historical archive returned no matching hours — showing estimated fallback values';
+    renderStep(step); // refresh currently-displayed step with real values
+  })
+  .catch(() => {
+    document.getElementById('fetchStatus').textContent = 'Historical archive unavailable offline — showing estimated fallback values';
+  });
+
+function playDemo(){
+  const btn = document.getElementById('playBtn');
+  btn.disabled = true;
+  const originalLabel = '▶ Replay 19 May 2026 event';
+  btn.textContent = '● Playing…';
+  step = 0;
+  const interval = setInterval(()=>{
+    renderStep(step);
+    step++;
+    if(step >= timeline.length){
+      clearInterval(interval);
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  }, 1400);
+}
+
+document.getElementById('btnAuthority').onclick = function(){
+  document.getElementById('authorityView').classList.add('active');
+  document.getElementById('pilgrimView').classList.remove('active');
+  this.classList.add('active');
+  document.getElementById('btnPilgrim').classList.remove('active');
+};
+document.getElementById('btnPilgrim').onclick = function(){
+  document.getElementById('pilgrimView').classList.add('active');
+  document.getElementById('authorityView').classList.remove('active');
+  this.classList.add('active');
+  document.getElementById('btnAuthority').classList.remove('active');
+};
+</script>
+
+</body>
+</html>
